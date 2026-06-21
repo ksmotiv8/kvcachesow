@@ -1,0 +1,666 @@
+diff --git a/ffi/src/lib.rs b/ffi/src/lib.rs
+index ec0fb5e..4c2111d 100644
+--- a/ffi/src/lib.rs
++++ b/ffi/src/lib.rs
+@@ -243,9 +243,10 @@ pub enum ResponseType {
+     Error = 9,
+ }
+ 
+-/// A Send-safe wrapper around a raw buffer pointer and length.
+-/// The caller guarantees the buffer remains valid for the duration of the FFI call.
+-struct ResponseBuffer(*mut u8, usize);
++/// A Send-safe wrapper around caller-provided response buffers (one per
++/// top-level array element; a single entry for scalar commands).
++/// The caller guarantees the buffers remain valid for the duration of the FFI call.
++struct ResponseBuffer(Vec<(*mut u8, usize)>);
+ unsafe impl Send for ResponseBuffer {}
+ 
+ /// Success callback that is called when a command succeeds.
+@@ -759,8 +760,8 @@ impl ClientAdapter {
+                     self.runtime.spawn(async move {
+                         match request_future.await {
+                             Ok(value) => {
+-                                let buf = response_buf.map(|rb| (rb.0, rb.1));
+-                                match valkey_value_to_arena_response(value, buf) {
++                                let buf = response_buf.map(|rb| rb.0).unwrap_or_default();
++                                match valkey_value_to_arena_response(value, &buf) {
+                                     Ok((root_ptr, arena_ptr)) => {
+                                         if let Some(w) = ASYNC_PIPE.get() {
+                                             w.push_success(
+@@ -845,7 +846,7 @@ impl ClientAdapter {
+     ) -> *mut CommandResult {
+         match result {
+             Ok(value) => {
+-                let buf = response_buf.map(|rb| (rb.0, rb.1));
++                let buf = response_buf.map(|rb| rb.0).unwrap_or_default();
+                 if let Some(success_callback) = success_callback {
+                     // Stack fast-path for simple types: avoids arena allocation.
+                     // Only used when the caller opts in (allow_stack_response=true),
+@@ -906,7 +907,7 @@ impl ClientAdapter {
+                         }
+                     }
+                     // Heap path: arena-allocated response
+-                    match valkey_value_to_arena_response(value, buf) {
++                    match valkey_value_to_arena_response(value, &buf) {
+                         Ok((root_ptr, _arena_ptr)) => {
+                             unsafe { (success_callback)(request_id, root_ptr) };
+                         }
+@@ -920,7 +921,7 @@ impl ClientAdapter {
+                     }
+                 } else {
+                     // Sync path: always use arena
+-                    match valkey_value_to_arena_response(value, buf) {
++                    match valkey_value_to_arena_response(value, &buf) {
+                         Ok((root_ptr, _arena_ptr)) => {
+                             return Box::into_raw(Box::new(CommandResult {
+                                 response: root_ptr,
+@@ -2547,19 +2548,24 @@ impl ResponseArena {
+     fn build(
+         &mut self,
+         value: Value,
+-        response_buf: Option<(*mut u8, usize)>,
++        bufs: &[(*mut u8, usize)],
+     ) -> RedisResult<usize> {
+         let idx = self.alloc_node();
+-        self.build_into(idx, value, response_buf)?;
++        self.build_into(idx, value, bufs)?;
+         Ok(idx)
+     }
+ 
+     /// Build a value into a pre-allocated node at the given index.
++    ///
++    /// `bufs` carries caller-owned response buffers consumed positionally: a
++    /// scalar value uses `bufs[0]`; an `Array` distributes `bufs[i]` to child
++    /// `i`, enabling zero-copy multi-key reads (e.g. MGET-into-buffers). An
++    /// empty slice means "no caller buffer" (normal heap-allocated response).
+     fn build_into(
+         &mut self,
+         idx: usize,
+         value: Value,
+-        response_buf: Option<(*mut u8, usize)>,
++        bufs: &[(*mut u8, usize)],
+     ) -> RedisResult<()> {
+         match value {
+             Value::Nil => {}
+@@ -2585,7 +2591,12 @@ impl ResponseArena {
+                 self.nodes[idx].string_value_len = len;
+             }
+             Value::BulkString(data) => {
+-                let data = if let Some((buf, buf_len)) = response_buf {
++                // Use the caller buffer only when a non-null destination was
++                // provided; a null entry falls back to a normal heap response
++                // (avoids writing through a null/invalid pointer).
++                let data = if let Some(&(buf, buf_len)) =
++                    bufs.first().filter(|&&(p, _)| !p.is_null())
++                {
+                     if data.len() > buf_len {
+                         return Err(RedisError::from((
+                             ErrorKind::ClientError,
+@@ -2622,10 +2633,13 @@ impl ResponseArena {
+                 for _ in 0..child_count {
+                     self.alloc_node();
+                 }
+-                // Build each child; descendants go after all child slots
++                // Build each child; descendants go after all child slots.
++                // Distribute caller buffers positionally so each element of an
++                // MGET-style response is written into its own buffer.
+                 for (i, item) in arr.into_iter().enumerate() {
+                     let ci = child_start + i;
+-                    self.build_into(ci, item, None)?;
++                    let child_bufs = bufs.get(i).map(core::slice::from_ref).unwrap_or(&[]);
++                    self.build_into(ci, item, child_bufs)?;
+                 }
+                 self.nodes[idx].response_type = ResponseType::Array;
+                 self.nodes[idx].array_value_len = child_count as c_long;
+@@ -2641,9 +2655,9 @@ impl ResponseArena {
+                 }
+                 for (i, (k, v)) in map.into_iter().enumerate() {
+                     let ki = self.nodes.len();
+-                    self.build(k, None)?;
++                    self.build(k, &[])?;
+                     let vi = self.nodes.len();
+-                    self.build(v, None)?;
++                    self.build(v, &[])?;
+                     // Pointers fixed up in finalize() along with array_value
+                     self.nodes[wrapper_start + i].map_key = ki as *mut CommandResponse;
+                     self.nodes[wrapper_start + i].map_value = vi as *mut CommandResponse;
+@@ -2660,7 +2674,7 @@ impl ResponseArena {
+                 }
+                 for (i, item) in arr.into_iter().enumerate() {
+                     let ci = child_start + i;
+-                    self.build_into(ci, item, None)?;
++                    self.build_into(ci, item, &[])?;
+                 }
+                 self.nodes[idx].response_type = ResponseType::Sets;
+                 self.nodes[idx].sets_value_len = child_count as c_long;
+@@ -2702,7 +2716,7 @@ impl ResponseArena {
+                 self.nodes[vk].string_value_len = len;
+                 // values value (array)
+                 let vv = self.nodes.len();
+-                self.build(Value::Array(data), None)?;
++                self.build(Value::Array(data), &[])?;
+                 self.nodes[w1].map_key = vk as *mut CommandResponse;
+                 self.nodes[w1].map_value = vv as *mut CommandResponse;
+ 
+@@ -2755,10 +2769,10 @@ impl ResponseArena {
+ /// The arena_ptr must be freed with `free_response_arena`.
+ fn valkey_value_to_arena_response(
+     value: Value,
+-    response_buf: Option<(*mut u8, usize)>,
++    bufs: &[(*mut u8, usize)],
+ ) -> RedisResult<(*mut CommandResponse, *mut ResponseArena)> {
+     let mut arena = ResponseArena::from_pool(&value);
+-    arena.build(value, response_buf)?;
++    arena.build(value, bufs)?;
+     Ok(arena.finalize())
+ }
+ 
+@@ -2967,7 +2981,165 @@ pub unsafe extern "C-unwind" fn command_with_buffer(
+     let buf_option = if response_buf.is_null() {
+         None
+     } else {
+-        Some(ResponseBuffer(response_buf, response_buf_len))
++        Some(ResponseBuffer(vec![(response_buf, response_buf_len)]))
++    };
++
++    client_adapter.execute_request_with_buffer(
++        request_id,
++        async move {
++            let routing_info = get_route(route, Some(&cmd))?;
++            client.send_command(&mut cmd, routing_info).await
++        },
++        buf_option,
++    )
++}
++
++/// MGET-style variant of [`command_with_buffer`] that writes each element of an
++/// array response into its own caller-provided buffer (zero-copy multi-key GET).
++///
++/// `response_bufs` / `response_buf_lens` are parallel arrays of
++/// `response_buf_count` writable buffers; element `i` of the array response is
++/// copied into buffer `i`. A `Nil` element (e.g. a missing key) leaves its
++/// buffer untouched and is reported as a null response. The command response
++/// carries the number of bytes written per element instead of the value bytes.
++///
++/// Intended for commands whose reply is a flat array of bulk strings (e.g.
++/// `MGET`) or a scalar bulk string. If an element's value is larger than its
++/// buffer, the whole command fails with a client error. A null buffer entry, or
++/// fewer buffers than reply elements, makes the affected elements fall back to a
++/// normal heap-allocated response (no zero-copy) rather than erroring.
++///
++/// # Safety
++/// Same contract as [`command_with_buffer`]. When non-null, `response_bufs` and
++/// `response_buf_lens` must each point to `response_buf_count` valid entries.
++/// Each buffer must remain valid and writable until the command **completes**:
++/// for sync clients that is until this call returns; for async clients it is
++/// until the success/failure callback fires (the copy happens off-thread).
++#[unsafe(no_mangle)]
++pub unsafe extern "C-unwind" fn command_with_buffers(
++    client_adapter_ptr: *const c_void,
++    request_id: usize,
++    command_type: RequestType,
++    arg_count: c_ulong,
++    args: *const usize,
++    args_len: *const c_ulong,
++    route_bytes: *const u8,
++    route_bytes_len: usize,
++    response_bufs: *const *mut u8,
++    response_buf_lens: *const usize,
++    response_buf_count: usize,
++    span_ptr: u64,
++) -> *mut CommandResult {
++    let client_adapter = unsafe {
++        // we increment the strong count to ensure that the client is not dropped just because we turned it into an Arc.
++        Arc::increment_strong_count(client_adapter_ptr);
++        Arc::from_raw(client_adapter_ptr as *mut ClientAdapter)
++    };
++
++    let arg_vec: Vec<&[u8]> = if !args.is_null() && !args_len.is_null() {
++        unsafe { convert_double_pointer_to_vec(args as *const *const c_void, arg_count, args_len) }
++    } else {
++        Vec::new()
++    };
++
++    // Create the command outside of the task to ensure that the command arguments passed
++    // from the foreign code are still valid
++    let mut cmd = match command_type.get_command() {
++        Some(cmd) => cmd,
++        None => {
++            let err = RedisError::from((ErrorKind::ClientError, "Couldn't fetch command type"));
++            return unsafe { client_adapter.handle_redis_error(err, request_id) };
++        }
++    };
++
++    // Check if compression is enabled before converting args
++    let compression_manager = client_adapter.core.client.compression_manager();
++
++    let should_process_compression = compression_manager
++        .as_ref()
++        .map(|cm| cm.is_enabled())
++        .unwrap_or(false);
++
++    if should_process_compression {
++        // Convert arg_vec to owned Vec<Vec<u8>> for compression processing
++        let mut owned_args: Vec<Vec<u8>> = arg_vec.iter().map(|&arg| arg.to_vec()).collect();
++
++        let is_custom_command = matches!(command_type, RequestType::CustomCommand);
++        let effective_command_type = if is_custom_command {
++            resolve_custom_command_type(&owned_args)
++        } else {
++            command_type
++        };
++
++        let args_to_compress = if is_custom_command && !owned_args.is_empty() {
++            &mut owned_args[1..]
++        } else {
++            &mut owned_args[..]
++        };
++
++        if let Err(err) = glide_core::compression::process_command_args_for_compression(
++            args_to_compress,
++            effective_command_type,
++            compression_manager.as_deref(),
++        ) {
++            let err = RedisError::from((
++                ErrorKind::ClientError,
++                "Compression failed",
++                err.to_string(),
++            ));
++            return unsafe { client_adapter.handle_redis_error(err, request_id) };
++        }
++
++        for command_arg in &owned_args {
++            cmd.arg(command_arg);
++        }
++    } else {
++        for command_arg in &arg_vec {
++            cmd.arg(command_arg);
++        }
++    }
++
++    if span_ptr != 0 {
++        cmd.set_span(unsafe { get_unsafe_span_from_ptr(Some(span_ptr)) });
++    }
++
++    if let Some(ref span) = cmd.span() {
++        set_db_attributes(span, &cmd, &client_adapter.core.client);
++    }
++
++    let route = if !route_bytes.is_null() {
++        let r_bytes = unsafe { std::slice::from_raw_parts(route_bytes, route_bytes_len) };
++        match Routes::parse_from_bytes(r_bytes) {
++            Ok(route) => route,
++            Err(err) => {
++                let err = RedisError::from((
++                    ErrorKind::ClientError,
++                    "Decoding route failed",
++                    err.to_string(),
++                ));
++                return unsafe { client_adapter.handle_redis_error(err, request_id) };
++            }
++        }
++    } else {
++        Routes::default()
++    };
++
++    let mut client = client_adapter.core.client.clone();
++
++    // Collect the caller's per-element buffers into a single owned Vec, consumed
++    // positionally by the arena builder (element i -> buffer i). Both parallel
++    // arrays must be non-null; otherwise the request runs without buffers.
++    let buf_option = if response_bufs.is_null()
++        || response_buf_lens.is_null()
++        || response_buf_count == 0
++    {
++        None
++    } else {
++        let ptrs = unsafe { std::slice::from_raw_parts(response_bufs, response_buf_count) };
++        let lens = unsafe { std::slice::from_raw_parts(response_buf_lens, response_buf_count) };
++        Some(ResponseBuffer(
++            ptrs.iter().zip(lens.iter()).map(|(&p, &l)| (p, l)).collect(),
++        ))
+     };
+ 
+     client_adapter.execute_request_with_buffer(
+@@ -3489,7 +3661,7 @@ pub unsafe extern "C-unwind" fn get_cache_metrics(
+         || (cid != 0 && ASYNC_PIPE.get().is_some());
+     if is_pipe_or_sync {
+         match result {
+-            Ok(value) => match valkey_value_to_arena_response(value, None) {
++            Ok(value) => match valkey_value_to_arena_response(value, &[]) {
+                 Ok((root_ptr, arena_ptr)) => Box::into_raw(Box::new(CommandResult {
+                     response: root_ptr,
+                     command_error: std::ptr::null_mut(),
+diff --git a/python/glide-shared/glide_shared/_glide_ffi.py b/python/glide-shared/glide_shared/_glide_ffi.py
+index b8ec82b..0ac1520 100644
+--- a/python/glide-shared/glide_shared/_glide_ffi.py
++++ b/python/glide-shared/glide_shared/_glide_ffi.py
+@@ -140,6 +140,21 @@ class _GlideFFI:
+                 uint64_t span_ptr
+             );
+ 
++            CommandResult* command_with_buffers(
++                const void* client_adapter_ptr,
++                uintptr_t request_id,
++                int command_type,
++                unsigned long arg_count,
++                const size_t *args,
++                const unsigned long* args_len,
++                const unsigned char* route_bytes,
++                size_t route_bytes_len,
++                uint8_t** response_bufs,
++                size_t* response_buf_lens,
++                size_t response_buf_count,
++                uint64_t span_ptr
++            );
++
+             CommandResult* invoke_script(
+                 const void* client_adapter_ptr,
+                 uintptr_t request_id,
+diff --git a/python/glide-sync/glide_sync/glide_client.py b/python/glide-sync/glide_sync/glide_client.py
+index 85d72be..30c8831 100644
+--- a/python/glide-sync/glide_sync/glide_client.py
++++ b/python/glide-sync/glide_sync/glide_client.py
+@@ -7,7 +7,6 @@ from types import TracebackType
+ from typing import Any, List, Optional, Tuple, Union
+ 
+ from glide_shared._fast_response import parse_response as _fast_parse_response
+-from glide_shared._glide_ffi import _GlideFFI
+ from glide_shared.commands.command_args import ObjectType
+ from glide_shared.commands.core_options import PubSubMsg
+ from glide_shared.config import (
+@@ -35,15 +34,13 @@ from glide_shared.routes import (
+     build_protobuf_route,
+ )
+ 
++from ._glide_ffi import _GlideFFI
+ from .logger import Level, Logger
+ from .sync_commands.cluster_commands import ClusterCommands
+ from .sync_commands.cluster_scan_cursor import ClusterScanCursor
+ from .sync_commands.core import CoreCommands
+ from .sync_commands.standalone_commands import StandaloneCommands
+ 
+-_SYNC_FFI = _GlideFFI()  # Sync client's own FFI instance
+-
+-
+ if sys.version_info >= (3, 11):
+     from typing import Self
+ else:
+@@ -64,7 +61,7 @@ class BaseClient(CoreCommands):
+         """
+         To create a new client, use the `create` classmethod
+         """
+-        _glide_ffi = _SYNC_FFI
++        _glide_ffi = _GlideFFI()
+         self._ffi = _glide_ffi.ffi
+         self._lib = _glide_ffi.lib
+         self._config: BaseClientConfiguration = config
+@@ -102,7 +99,6 @@ class BaseClient(CoreCommands):
+         conn_req = self._config._create_a_protobuf_conn_request(
+             cluster_mode=type(self._config) is GlideClusterClientConfiguration
+         )
+-        conn_req.lib_name = "GlidePySync"
+         conn_req_bytes = conn_req.SerializeToString()
+         client_type = self._ffi.new(
+             "ClientType*",
+@@ -125,7 +121,6 @@ class BaseClient(CoreCommands):
+             resolver_fn = self._config.address_resolver
+ 
+             def _address_resolver_callback(
+-                client_id,
+                 host_ptr,
+                 host_len,
+                 port,
+@@ -157,7 +152,6 @@ class BaseClient(CoreCommands):
+             client_type,
+             pubsub_callback,
+             address_resolver_callback,
+-            0,  # client_id is not used by the Python client
+         )
+ 
+         Logger.log(Level.INFO, "connection info", "new connection established")
+@@ -423,10 +417,11 @@ class BaseClient(CoreCommands):
+ 
+     def _execute_command(
+         self,
+-        request_type: RequestType.ValueType,  # type: ignore[override]
++        request_type: RequestType.ValueType,
+         args: List[TEncodable],
+         route: Optional[Route] = None,
+         response_buffer: Optional[memoryview] = None,
++        response_buffers: Optional[List[memoryview]] = None,
+     ) -> TResult:
+         if self._is_closed:
+             raise ClosingError(
+@@ -440,6 +435,12 @@ class BaseClient(CoreCommands):
+                 raise TypeError("response_buffer must be writable")
+             if not response_buffer.c_contiguous:
+                 raise TypeError("response_buffer must be C-contiguous")
++        if response_buffers is not None:
++            for mv in response_buffers:
++                if mv.readonly:
++                    raise TypeError("response_buffers entries must be writable")
++                if not mv.c_contiguous:
++                    raise TypeError("response_buffers entries must be C-contiguous")
+ 
+         # Create span if OpenTelemetry is configured and sampling indicates we should trace
+         from .opentelemetry import OpenTelemetry
+@@ -460,25 +461,48 @@ class BaseClient(CoreCommands):
+             # Route bytes should be kept alive in the scope of the FFI call
+             route_ptr, route_len, route_bytes = self._to_c_route_ptr_and_len(route)
+ 
+-            buf_ptr = (
+-                self._ffi.from_buffer(response_buffer)
+-                if response_buffer
+-                else self._ffi.NULL
+-            )
+-            buf_len = len(response_buffer) if response_buffer else 0
+-            result = self._lib.command_with_buffer(
+-                client_adapter_ptr,
+-                0,
+-                request_type,
+-                len(args),
+-                c_args,
+-                c_lengths,
+-                route_ptr,
+-                route_len,
+-                buf_ptr,
+-                buf_len,
+-                span,
+-            )
++            if response_buffers is not None:
++                # Zero-copy multi-key path: one writable buffer per element.
++                # Keep the per-buffer cdata alive (target_ptrs) for the call.
++                target_ptrs = [self._ffi.from_buffer(mv) for mv in response_buffers]
++                target_bufs = self._ffi.new("uint8_t*[]", target_ptrs)
++                target_lens = self._ffi.new(
++                    "size_t[]", [len(mv) for mv in response_buffers]
++                )
++                result = self._lib.command_with_buffers(
++                    client_adapter_ptr,
++                    0,
++                    request_type,
++                    len(args),
++                    c_args,
++                    c_lengths,
++                    route_ptr,
++                    route_len,
++                    target_bufs,
++                    target_lens,
++                    len(response_buffers),
++                    span,
++                )
++            else:
++                buf_ptr = (
++                    self._ffi.from_buffer(response_buffer)
++                    if response_buffer
++                    else self._ffi.NULL
++                )
++                buf_len = len(response_buffer) if response_buffer else 0
++                result = self._lib.command_with_buffer(
++                    client_adapter_ptr,
++                    0,
++                    request_type,
++                    len(args),
++                    c_args,
++                    c_lengths,
++                    route_ptr,
++                    route_len,
++                    buf_ptr,
++                    buf_len,
++                    span,
++                )
+         finally:
+             # Drop span if it was created
+             if span != 0:
+@@ -541,7 +565,7 @@ class BaseClient(CoreCommands):
+ 
+     def _execute_batch(
+         self,
+-        commands: List[Tuple[RequestType.ValueType, List[TEncodable]]],  # type: ignore[override]
++        commands: List[Tuple[RequestType.ValueType, List[TEncodable]]],
+         is_atomic: bool,
+         raise_on_error: bool,
+         retry_server_error: bool = False,
+diff --git a/python/glide-sync/glide_sync/sync_commands/core.py b/python/glide-sync/glide_sync/sync_commands/core.py
+index 8f00d18..cda6da8 100644
+--- a/python/glide-sync/glide_sync/sync_commands/core.py
++++ b/python/glide-sync/glide_sync/sync_commands/core.py
+@@ -1,15 +1,5 @@
+ # Copyright Valkey GLIDE Project Contributors - SPDX Identifier: Apache-2.0
+-from typing import (
+-    Dict,
+-    List,
+-    Mapping,
+-    Optional,
+-    Protocol,
+-    Set,
+-    Tuple,
+-    Union,
+-    cast,
+-)
++from typing import Dict, List, Mapping, Optional, Protocol, Set, Tuple, Union, cast
+ 
+ from glide_shared.commands.bitmap import (
+     BitFieldGet,
+@@ -27,7 +17,6 @@ from glide_shared.commands.core_options import (
+     ExpirySet,
+     HashFieldConditionalChange,
+     InsertPosition,
+-    MigrateOptions,
+     OnlyIfEqual,
+     UpdateOptions,
+     _build_sort_args,
+@@ -78,15 +67,16 @@ from .cluster_scan_cursor import ClusterScanCursor
+ class CoreCommands(Protocol):
+     def _execute_command(
+         self,
+-        request_type: int,
++        request_type: RequestType.ValueType,
+         args: List[TEncodable],
+         route: Optional[Route] = ...,
+         response_buffer: Optional[memoryview] = ...,
++        response_buffers: Optional[List[memoryview]] = ...,
+     ) -> TResult: ...
+ 
+     def _execute_batch(
+         self,
+-        commands: List[Tuple[int, List[TEncodable]]],
++        commands: List[Tuple[RequestType.ValueType, List[TEncodable]]],
+         is_atomic: bool,
+         raise_on_error: bool,
+         retry_server_error: bool = False,
+@@ -760,7 +750,11 @@ class CoreCommands(Protocol):
+             self._execute_command(RequestType.Move, [key, str(db_index)]),
+         )
+ 
+-    def mget(self, keys: List[TEncodable]) -> List[Optional[bytes]]:
++    def mget(
++        self,
++        keys: List[TEncodable],
++        buffers: Optional[List[memoryview]] = None,
++    ) -> List[Optional[bytes]]:
+         """
+         Retrieve the values of multiple keys.
+ 
+@@ -788,8 +782,11 @@ class CoreCommands(Protocol):
+             >>> client.mget(["key1", "key2"])
+                 [b'value1' , b'value2']
+         """
++        if buffers is not None and len(buffers) != len(keys):
++            raise ValueError("buffers must have the same length as keys")
+         return cast(
+-            List[Optional[bytes]], self._execute_command(RequestType.MGet, keys)
++            List[Optional[bytes]],
++            self._execute_command(RequestType.MGet, keys, response_buffers=buffers),
+         )
+ 
+     def decr(self, key: TEncodable) -> int:
+@@ -2399,17 +2396,6 @@ class CoreCommands(Protocol):
+         """
+         return cast(TOK, self._execute_command(RequestType.Select, [str(index)]))
+ 
+-    def reset(self) -> bytes:
+-        """
+-        Reset the connection state.
+-
+-        See [valkey.io](https://valkey.io/commands/reset/) for details.
+-
+-        Returns:
+-            bytes: The string "RESET".
+-        """
+-        return cast(bytes, self._execute_command(RequestType.Reset, []))
+-
+     def srem(self, key: TEncodable, members: List[TEncodable]) -> int:
+         """
+         Remove specified members from the set stored at `key`.
+@@ -6941,49 +6927,6 @@ class CoreCommands(Protocol):
+             self._execute_command(RequestType.Restore, args),
+         )
+ 
+-    def migrate(
+-        self,
+-        host: str,
+-        port: int,
+-        key: TEncodable,
+-        destination_db: int,
+-        timeout: int,
+-        options: Optional[MigrateOptions] = None,
+-    ) -> str:
+-        """
+-        Atomically transfers a key from a source Valkey instance to a destination Valkey instance.
+-        On success, the key is deleted from the source instance.
+-
+-        See [valkey.io](https://valkey.io/commands/migrate/) for details.
+-
+-        Args:
+-            host (str): The host of the destination Valkey instance.
+-            port (int): The port of the destination Valkey instance.
+-            key (TEncodable): The key to migrate.
+-            destination_db (int): The database index on the destination instance.
+-            timeout (int): The maximum idle time in milliseconds for the bulk-transfer.
+-            options (Optional[MigrateOptions]): Additional migration options.
+-
+-        Returns:
+-            str: "OK" on success, or "NOKEY" if the key was not found.
+-
+-        Examples:
+-            >>> client.migrate("127.0.0.1", 6380, "mykey", 0, 5000)
+-        """
+-        args: List[TEncodable] = [
+-            host,
+-            str(port),
+-            key,
+-            str(destination_db),
+-            str(timeout),
+-        ]
+-        if options:
+-            args.extend(options.to_args())
+-        return cast(
+-            str,
+-            self._execute_command(RequestType.Migrate, args),
+-        )
+-
+     def sscan(
+         self,
+         key: TEncodable,
