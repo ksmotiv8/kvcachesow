@@ -50,6 +50,7 @@ kvcachesow/
 ├── docs/
 │   ├── RESULTS.md             Verified before/after results + caveats
 │   ├── METHODOLOGY.md         Environment, how each benchmark works, reproduction
+│   ├── SCENARIOS.md           Specific runnable scenarios to try (goal/command/expected)
 │   └── PATCHES.md             Deep-dive on both patches (design, before/after, apply)
 ├── patches/
 │   ├── valkey_connector_batched_exists.patch    Patch 1 — LMCache connector
@@ -86,8 +87,12 @@ python benchmarks/bench_exists_patch.py --host <valkey-host> --port 6379 \
     --num-workers 8 --num-keys 512 --loops 20
 ```
 
-See [`benchmarks/README.md`](benchmarks/README.md) for all options and
-[`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for the full setup.
+See [`benchmarks/README.md`](benchmarks/README.md) for all options,
+[`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for the full setup, and
+**[`docs/SCENARIOS.md`](docs/SCENARIOS.md) for ten specific scenarios to try** —
+each with its goal, exact command, and expected result (≥2× verification,
+worker-count tuning, payload crossover, GLIDE-vs-RESP, both patches' before/after,
+NIC/line-rate check, resource efficiency, and the end-to-end corpus run).
 
 ---
 
