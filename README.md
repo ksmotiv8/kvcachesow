@@ -51,7 +51,8 @@ kvcachesow/
 │   ├── RESULTS.md             Verified before/after results + caveats
 │   ├── METHODOLOGY.md         Environment, how each benchmark works, reproduction
 │   ├── SCENARIOS.md           Specific runnable scenarios to try (goal/command/expected)
-│   └── PATCHES.md             Deep-dive on both patches (design, before/after, apply)
+│   ├── PATCHES.md             Deep-dive on both patches (design, before/after, apply)
+│   └── SOW_COMPLIANCE.md      Deliverables mapped to the work items they satisfy
 ├── patches/
 │   ├── valkey_connector_batched_exists.patch    Patch 1 — LMCache connector
 │   └── valkey_glide_mget_buffers.patch          Patch 2 — valkey-glide (mget buffers)
