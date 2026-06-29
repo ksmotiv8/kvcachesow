@@ -13,6 +13,7 @@ warmup pass first. See `../docs/METHODOLOGY.md` for what each measures.
 | `bench_exists_patch.py` | throughput | Before/after for the EXISTS-pipelining patch |
 | `bench_latency.py` | latency | Per-op p50/p90/p99/p99.9 for SET/GET/EXISTS |
 | `bench_resource_efficiency.py` | resource | Client CPU-ms/GiB and RSS, copy vs zero-copy |
+| `bench_corpus_e2e.py` | end-to-end | vLLM+LMCache TTFT cold-vs-cached over the 30-doc corpus, L2 verified |
 
 ## Requirements
 
@@ -116,3 +117,22 @@ noise.
 python bench_resource_efficiency.py --host 10.0.0.1 --port 6379 \
     --num-workers 8 --num-keys 256 --chunk-mb 1.0 --loops 20
 ```
+
+## `bench_corpus_e2e.py`
+
+End-to-end scenario: drives a real **vLLM** server (LMCache V1 + the Valkey
+connector) over the 30-document corpus and measures **TTFT cold vs. L2-cached**.
+Each document is sent twice — cold (compute prefill, store KV to Valkey), then
+cached (reuse) — with true streamed TTFT and a per-document Valkey
+`keyspace_hits` check to confirm L2 reuse. Start the vLLM server with
+`--no-enable-prefix-caching` and LMCache `local_cpu: false` so every reuse is
+forced through Valkey (see `../docs/SCENARIOS.md` §10 for the server command).
+
+```bash
+python bench_corpus_e2e.py --corpus ../corpus \
+    --vllm-url http://localhost:8000 --model Qwen/Qwen2.5-7B-Instruct-AWQ \
+    --valkey-host 10.0.0.1 --valkey-port 6379 --flush-l2
+```
+
+Extra requirement: `redis` (for the `keyspace_hits` check). A sample run is in
+`results/corpus_e2e_sample_output.txt` (~10× TTFT reduction across all 30 docs).

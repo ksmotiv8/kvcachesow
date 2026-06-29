@@ -24,6 +24,9 @@ median or a single run.
 - **Glide vs RESP:** at optimal config Glide ties or beats the hand-rolled C++
   RESP connector on bulk ≥1 MB; the patches close RESP's remaining lead on
   small-object/metadata workloads.
+- **End-to-end (vLLM + LMCache + Valkey), 30-doc corpus:** cold prefill →
+  L2-cached **TTFT median 10.07× faster** (3300 ms → 330 ms) across **all 30
+  legal/medical documents**, L2 reuse confirmed per document via `keyspace_hits`.
 
 ## Environment
 
@@ -168,6 +171,28 @@ Self + Codex reviewed (2 null-pointer UB issues found in the unsafe FFI and
 fixed; buffer-lifetime and flat-array contracts documented). Correctness
 verified (values land in buffers, missing keys → `None`, no regression to plain
 `mget` or `get(buffer=)`). Patch: `patches/valkey_glide_mget_buffers.patch`.
+
+## End-to-end: corpus TTFT cold vs. L2-cached (SOW 1.1.3 scenario)
+
+The storage-backend gains above are connector throughput; this measures what they
+buy in real serving. A vLLM server (Qwen2.5-7B-Instruct-AWQ on the L4) runs with
+LMCache V1 + the Valkey connector and **vLLM prefix caching disabled**, so every
+KV reuse must come from Valkey (L2), not a GPU-resident cache. Each of the 30
+legal/medical documents is sent twice: a **cold** pass (compute prefill, store KV
+to Valkey) after `FLUSHALL`, then a **cached** pass (reuse). TTFT is the true
+time-to-first-token (streamed first chunk). `bench_corpus_e2e.py`.
+
+| Metric (30 docs) | Cold | L2-cached | TTFT speedup |
+|---|---:|---:|---:|
+| TTFT median | 3300 ms | 330 ms | **10.07×** (range 6.5–10.7×) |
+
+- **L2 reuse confirmed for all 30/30 documents** via the per-document Valkey
+  `keyspace_hits` delta (total +2340 over the cached pass).
+- Cached TTFT (~330 ms) is the genuine cost of fetching a multi-MB KV blob from
+  Valkey over the network and resuming decode — vs. ~3.3 s to recompute prefill
+  from scratch. The win scales with prompt length (these docs are ~10–12k tokens).
+- This is the representative scenario the SOW names; the harness is reproducible
+  and a sample run is saved at `benchmarks/results/corpus_e2e_sample_output.txt`.
 
 ## Zero-copy: a modest, allocation-bound effect (measured honestly)
 

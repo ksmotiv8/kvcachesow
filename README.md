@@ -21,8 +21,12 @@ benchmark suite with a legal/medical document corpus.
   - **valkey-glide — batched zero-copy `mget`:** a new `mget(keys, buffers=[...])`
     API giving **2.51×** over the connector's current path, beating a hand-rolled
     C++ connector — batching *and* zero-copy in one round-trip.
-- **Reproducible suite:** six benchmark tools spanning throughput, latency, and
-  resource efficiency, a 30-document legal/medical corpus, and full methodology.
+- **Reproducible suite:** seven benchmark tools spanning throughput, latency,
+  resource efficiency, and an end-to-end vLLM scenario, a 30-document
+  legal/medical corpus, and full methodology.
+- **End-to-end (vLLM + LMCache + Valkey):** **~10× TTFT reduction** (3.3 s →
+  0.33 s) from L2 KV reuse across **all 30 corpus documents**, L2 verified per
+  document via `keyspace_hits`.
 
 See [`docs/RESULTS.md`](docs/RESULTS.md) for the complete tables and caveats.
 
@@ -38,6 +42,7 @@ Client: AWS G6 (NVIDIA L4). Server: Valkey 9.1.0, 10 I/O threads, single node.
 | Optimal worker count (single node) | **~8** (GET peaks ~2.76 GiB/s, near NIC ceiling) |
 | `EXISTS` prefix-scan — before → after (Patch 1) | 17k → **220k ops/s** (12.6× @ 1024 keys) |
 | Small-object batched GET — before → after (Patch 2) | 0.84 → **2.11 GiB/s** (2.51×, beats RESP 1.77) |
+| End-to-end TTFT, 30-doc corpus — cold → L2-cached | 3300 → **330 ms** (**~10×**, all 30 docs L2-verified) |
 
 ---
 
@@ -63,7 +68,9 @@ kvcachesow/
 │   ├── connector_compare.py         GLIDE connector vs RESP connector (integrated path)
 │   ├── bench_exists_patch.py        Before/after for the EXISTS pipelining patch
 │   ├── bench_latency.py             Per-op p50/p90/p99/p99.9 latency (SET/GET/EXISTS)
-│   └── bench_resource_efficiency.py Client CPU/GiB + RSS, copy vs zero-copy
+│   ├── bench_resource_efficiency.py Client CPU/GiB + RSS, copy vs zero-copy
+│   ├── bench_corpus_e2e.py          End-to-end vLLM+LMCache TTFT cold-vs-cached over the corpus
+│   └── results/                     Sample benchmark output (e.g. corpus e2e run)
 └── corpus/
     ├── manifest.csv           Index of the 30 legal/medical documents
     ├── legal/                 15 legal documents

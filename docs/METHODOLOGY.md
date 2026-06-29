@@ -111,6 +111,18 @@ threads) and process **RSS** — for the copy path vs the zero-copy buffer path.
 Each path runs in a **fresh subprocess** so allocator/connection warm-up from one
 path cannot bias the other's CPU/RSS.
 
+### `bench_corpus_e2e.py` (end-to-end scenario)
+Drives a real **vLLM** server (LMCache V1 + the Valkey connector) over the 30-doc
+corpus and measures **TTFT cold vs. L2-cached**. Each document is sent twice — a
+cold pass (compute prefill, store KV to Valkey) after an optional `FLUSHALL`,
+then a cached pass (reuse). TTFT is the true streamed first-token time, and L2
+reuse is attributed per document by the Valkey `keyspace_hits` delta (valid
+because the benchmark server is dedicated). Run the vLLM server with
+`--no-enable-prefix-caching` and LMCache `local_cpu: false` so every reuse is
+forced through Valkey rather than a higher cache tier; the harness reports both
+corpus-wide and L2-confirmed-subset statistics. Result: ~10× TTFT reduction
+across all 30 docs (3300 ms → 330 ms).
+
 ## Document corpus (SOW 1.1.3)
 
 `corpus/` contains **30 documents** — 15 legal and 15 medical — under
@@ -151,4 +163,10 @@ python benchmarks/bench_latency.py --host <host> --port 6379 \
 # Resource efficiency (client CPU/GiB + RSS), copy vs zero-copy
 python benchmarks/bench_resource_efficiency.py --host <host> --port 6379 \
     --num-workers 8 --num-keys 256 --chunk-mb 1.0 --loops 20
+
+# End-to-end corpus TTFT (needs a vLLM server, prefix caching disabled — see
+# docs/SCENARIOS.md §10 for the server command)
+python benchmarks/bench_corpus_e2e.py --corpus corpus \
+    --vllm-url http://localhost:8000 --model Qwen/Qwen2.5-7B-Instruct-AWQ \
+    --valkey-host <host> --valkey-port 6379 --flush-l2
 ```

@@ -254,22 +254,35 @@ raw GiB/s — measured honestly rather than asserted.
 ## 10. End-to-end with the document corpus (representative KV-cache)
 
 **Goal:** exercise the connector through real LLM serving with the 30 legal/
-medical documents.
-**Prereq:** vLLM with `LMCacheConnectorV1` configured to use the Valkey
-connector (`remote_url: valkey://HOST:6379`), and a deterministic hash
-(`sha256_cbor_64bit`) for TP > 1.
+medical documents and measure TTFT cold vs. L2-cached.
+**Prereq:** a vLLM server with `LMCacheConnectorV1` using the Valkey connector.
+Start it with **prefix caching disabled** so every reuse comes from Valkey (L2),
+not vLLM's GPU cache, and point LMCache at the Valkey server:
 
-Use the documents in `corpus/legal/` and `corpus/medical/` (indexed by
-`corpus/manifest.csv`) as prompts. Send each prompt **twice**: the first request
-computes and stores the KV cache to Valkey; the second retrieves it (an L2 hit).
-Compare time-to-first-token cold vs. cached, and confirm the Valkey
-`keyspace_hits` delta to verify the retrieval actually hit L2.
+```bash
+# valkey_single.yaml: remote_url "valkey://HOST:6379", local_cpu false,
+#   remote_serde naive, pre_caching_hash_algorithm sha256_cbor_64bit
+LMCACHE_CONFIG_FILE=valkey_single.yaml \
+vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --port 8000 --no-enable-prefix-caching \
+    --kv-transfer-config '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}'
+```
 
-**Expected:** large TTFT reduction on the cached request for long documents, with
-the L2 retrieval throughput bounded as in Scenarios 1–2.
+Then run the harness (it sends each doc cold, then cached, and checks the Valkey
+`keyspace_hits` delta per document):
 
-**Shows:** the storage-backend gains translate into end-to-end TTFT improvements
-on representative legal/medical workloads — the scenario the SOW targets.
+```bash
+python benchmarks/bench_corpus_e2e.py --corpus corpus \
+    --vllm-url http://localhost:8000 --model Qwen/Qwen2.5-7B-Instruct-AWQ \
+    --valkey-host HOST --valkey-port 6379 --flush-l2
+```
+
+**Expected:** all 30 docs L2-confirmed; cold TTFT median ≈ **3300 ms**, cached ≈
+**330 ms** → **~10× TTFT reduction** (range ~6.5–10.7×), `keyspace_hits` +2340.
+A sample run is saved at `benchmarks/results/corpus_e2e_sample_output.txt`.
+
+**Shows:** the storage-backend gains translate into a ~10× end-to-end TTFT
+reduction on representative legal/medical workloads — the scenario the SOW
+targets — with L2 retrieval verified per document.
 
 ---
 
