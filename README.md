@@ -21,8 +21,8 @@ benchmark suite with a legal/medical document corpus.
   - **valkey-glide — batched zero-copy `mget`:** a new `mget(keys, buffers=[...])`
     API giving **2.51×** over the connector's current path, beating a hand-rolled
     C++ connector — batching *and* zero-copy in one round-trip.
-- **Reproducible suite:** three benchmark tools, a 30-document legal/medical
-  corpus, and full methodology.
+- **Reproducible suite:** six benchmark tools spanning throughput, latency, and
+  resource efficiency, a 30-document legal/medical corpus, and full methodology.
 
 See [`docs/RESULTS.md`](docs/RESULTS.md) for the complete tables and caveats.
 
@@ -34,7 +34,7 @@ Client: AWS G6 (NVIDIA L4). Server: Valkey 9.1.0, 10 I/O threads, single node.
 
 | Metric | Result |
 |---|---|
-| GET, 4 MB — baseline → optimized | ~1.03 → ~2.4 GiB/s (**2.3–2.6×**, 3 reps) |
+| GET, 4 MiB — baseline → optimized (8w) | ~0.85 → ~2.7 GiB/s (**≥2× every rep**, median ~3×, 20 reps) |
 | Optimal worker count (single node) | **~8** (GET peaks ~2.76 GiB/s, near NIC ceiling) |
 | `EXISTS` prefix-scan — before → after (Patch 1) | 17k → **220k ops/s** (12.6× @ 1024 keys) |
 | Small-object batched GET — before → after (Patch 2) | 0.84 → **2.11 GiB/s** (2.51×, beats RESP 1.77) |
@@ -57,10 +57,13 @@ kvcachesow/
 │   ├── valkey_connector_batched_exists.patch    Patch 1 — LMCache connector
 │   └── valkey_glide_mget_buffers.patch          Patch 2 — valkey-glide (mget buffers)
 ├── benchmarks/
-│   ├── README.md              How to run the tools
-│   ├── valkey_microbench.py   Baseline vs +parallel vs +zero-copy; worker sweeps
-│   ├── connector_compare.py   GLIDE connector vs RESP connector (integrated path)
-│   └── bench_exists_patch.py  Before/after for the EXISTS pipelining patch
+│   ├── README.md                    How to run the tools
+│   ├── bench_baseline.py            ≥2x baseline-vs-optimized (paired, ABBA, PASS/FAIL)
+│   ├── valkey_microbench.py         Baseline vs +parallel vs +zero-copy; worker sweeps
+│   ├── connector_compare.py         GLIDE connector vs RESP connector (integrated path)
+│   ├── bench_exists_patch.py        Before/after for the EXISTS pipelining patch
+│   ├── bench_latency.py             Per-op p50/p90/p99/p99.9 latency (SET/GET/EXISTS)
+│   └── bench_resource_efficiency.py Client CPU/GiB + RSS, copy vs zero-copy
 └── corpus/
     ├── manifest.csv           Index of the 30 legal/medical documents
     ├── legal/                 15 legal documents
@@ -90,10 +93,11 @@ python benchmarks/bench_exists_patch.py --host <valkey-host> --port 6379 \
 
 See [`benchmarks/README.md`](benchmarks/README.md) for all options,
 [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for the full setup, and
-**[`docs/SCENARIOS.md`](docs/SCENARIOS.md) for ten specific scenarios to try** —
-each with its goal, exact command, and expected result (≥2× verification,
-worker-count tuning, payload crossover, GLIDE-vs-RESP, both patches' before/after,
-NIC/line-rate check, resource efficiency, and the end-to-end corpus run).
+**[`docs/SCENARIOS.md`](docs/SCENARIOS.md) for specific scenarios to try** —
+each with its goal, exact command, and expected result (≥2× verification and the
+parallel-vs-zero-copy ablation, worker-count tuning, payload crossover,
+GLIDE-vs-RESP, both patches' before/after, NIC/line-rate check, resource
+efficiency, per-op latency, and the end-to-end corpus run).
 
 ---
 

@@ -15,7 +15,29 @@ noted inline.
 
 ## 1. Confirm the ≥2× large-object win (SOW 1.1.1)
 
-**Goal:** show parallel-fetch delivers ≥2× GET on KV-cache-sized chunks.
+**Goal:** prove the optimized connector delivers ≥2× GET on KV-cache-sized chunks
+vs. the explicit pre-optimization baseline, with a defensible PASS/FAIL.
+
+```bash
+python benchmarks/bench_baseline.py --host HOST --port 6379 \
+    --num-workers 8 --num-keys 64 --chunk-mb 4.0 --loops 10 --reps 10
+```
+
+**Expected:** `baseline (1w, copy)` GET ≈ 0.8–0.9 GiB/s; `optimized (8w,
+zero-copy)` GET ≈ 2.7 GiB/s → **paired GET speedup median ~3.0–3.3×, worst rep
+≥2.1× across 10 counterbalanced (ABBA) reps → `PASS`**. SET ≈ 3.0–3.6×. Re-run;
+the worst rep should clear 2× every time.
+
+**Shows:** the retrieval optimizations meet the ≥2× large-object bar against the
+"existing connector" baseline, under a counterbalanced paired design (no
+arm-order bias, silent misses rejected). For the *parallelism-vs-zero-copy
+breakdown*, use Scenario 1b.
+
+---
+
+## 1b. Attribute the gain — parallel fetch vs zero-copy (ablation)
+
+**Goal:** see which optimization the ≥2× comes from.
 
 ```bash
 python benchmarks/valkey_microbench.py --host HOST --port 6379 \
@@ -23,11 +45,12 @@ python benchmarks/valkey_microbench.py --host HOST --port 6379 \
 ```
 
 **Expected:** `baseline (1w, copy)` GET ≈ 1.0 GiB/s; `+parallel (32w, copy)` and
-`+zero-copy (32w, buf)` GET ≈ 2.2–2.6 GiB/s → **GET speedup ≈ 2.3–2.6×**, SET
-≈ 6–7×. Run it 3× back-to-back; every run should clear 2×.
+`+zero-copy (32w, buf)` GET ≈ 2.2–2.6 GiB/s → **GET speedup ≈ 2.3–2.6×** at 32
+workers (past the single-node peak — Scenario 2). The win comes from **parallel
+fetch**; zero-copy ≈ parallel at this size.
 
-**Shows:** the retrieval optimizations meet the ≥2× large-object bar, and that
-the win comes from parallel fetch (zero-copy ≈ parallel at this size).
+**Shows:** the ≥2× is a parallel-fetch effect; zero-copy is throughput-neutral at
+4 MB (its value is resource/placement — Scenario 9).
 
 ---
 
@@ -206,24 +229,25 @@ bulk gains require a faster NIC or sharding across nodes, not a different client
 
 ---
 
-## 9. Resource efficiency (zero-copy allocation behavior)
+## 9. Resource efficiency — client CPU & memory (SOW 1.1.3)
 
-**Goal:** see where zero-copy actually helps (it is *not* a bulk-throughput win).
+**Goal:** quantify the client-side cost of GET (CPU per GiB, RSS) and see where
+zero-copy actually helps (it is *not* a bulk-throughput win).
 
 ```bash
-# single-key, large value: expect ~0% client-CPU difference
-# many small values: expect a throughput gain from avoiding per-value allocations
-python benchmarks/valkey_microbench.py --host HOST --port 6379 \
-    --num-workers 1 --num-keys 512 --chunk-mb 0.25 --loops 15 --compare
+python benchmarks/bench_resource_efficiency.py --host HOST --port 6379 \
+    --num-workers 8 --num-keys 256 --chunk-mb 1.0 --loops 20
 ```
 
-**Expected:** baseline vs +zero-copy GET is ~equal for single large values; the
-advantage appears as value count rises (a 1024-element `mget` avoids 1024 `bytes`
+**Expected:** the copy and zero-copy paths report near-equal **CPU-ms/GiB** and
+**RSS** at 1 MB (within run-to-run noise); each path is measured in its own
+subprocess so they don't bias each other. The zero-copy advantage grows with the
+*number* of values fetched (a 1024-element `mget` avoids 1024 `bytes`
 allocations, ≈ +26% — see Scenario 7).
 
 **Shows:** zero-copy's value is **allocation-avoidance / direct placement** into
-caller memory (pinned host buffers, tensors), which scales with the number of
-values, not raw GiB/s.
+caller memory (pinned host buffers, tensors), which scales with value count, not
+raw GiB/s — measured honestly rather than asserted.
 
 ---
 
@@ -246,3 +270,24 @@ the L2 retrieval throughput bounded as in Scenarios 1–2.
 
 **Shows:** the storage-backend gains translate into end-to-end TTFT improvements
 on representative legal/medical workloads — the scenario the SOW targets.
+
+---
+
+## 11. Per-operation latency distribution (SOW 1.1.3)
+
+**Goal:** report tail latency (p50/p99) per operation, not just throughput.
+
+```bash
+for mb in 1.0 4.0; do
+  echo "chunk=${mb}MB"
+  python benchmarks/bench_latency.py --host HOST --port 6379 \
+    --chunk-mb $mb --ops 2000 --warmup 200
+done
+```
+
+**Expected:** at 1 MB, GET p50 ≈ 1.2 ms / p99 ≈ 1.9 ms; at 4 MB GET p50 ≈ 4.5 ms.
+`EXISTS` stays flat (~0.3 ms) regardless of payload (metadata-only). Each op is
+issued one at a time (single worker), so these are isolated request latencies.
+
+**Shows:** the latency dimension the SOW names — useful for SLO/TTFT budgeting,
+complementing the batch-throughput numbers in Scenarios 1–2.

@@ -47,19 +47,45 @@ so the comparison reflects real behavior rather than a synthetic best case:
 1 worker thread (no parallel fetch) on the copy path (no zero-copy buffer GET).
 "Optimized" enables them — N workers with zero-copy buffer GET. This isolates
 the *retrieval optimizations* the SOW names (parallel fetch, optimal I/O thread
-configuration) on identical code and hardware.
+configuration) on identical code and hardware. The pre-#2790 connector issued
+single in-flight, copy-path operations, so the 1-worker copy arm is a faithful
+stand-in for the "existing connector." (The true legacy 2-key async connector
+was lost to a shallow clone; the toggled arm is the cleaner, more conservative
+baseline and removes the confounds of a cross-implementation A/B.)
 
-A pre-GLIDE connector version is also available in LMCache history (before the
-GLIDE-optimization commit) for a connector-version before/after if preferred;
-the opts-toggled baseline above is the controlled, reproducible default.
+The dedicated baseline tool, `bench_baseline.py`, hardens this comparison so the
+≥2× claim is defensible:
 
-## The three benchmarks
+- **Counterbalanced arm order (ABBA).** Half the reps run the baseline first and
+  half run the optimized first, so monotonic drift, cache/allocator warming, or a
+  server transient cannot systematically favor whichever arm always runs second.
+- **Paired per-rep speedup.** Each rep's ratio is computed from two time-adjacent
+  measurements, so a transient that slows one arm tends to slow the other in the
+  same rep rather than skewing the ratio. The result is reported as a spread
+  (min–max, median) plus a worst-rep `PASS/FAIL` on the ≥2× target — so the claim
+  is stated as "held in every rep," not merely "on average."
+- **Honest toggle + verification.** The copy path is forced via the connector's
+  internal `_has_buffer_get` flag (guarded by an assertion that fails loudly if
+  the internals move); every GET future is checked for a hit and a buffer is
+  sampled each rep, so a silent miss cannot be counted as free throughput.
 
-### `valkey_microbench.py`
+## The benchmarks
+
+The suite covers the three SOW 1.1.3 dimensions — throughput, latency, and
+resource efficiency.
+
+### `bench_baseline.py` (throughput, SOW 1.1.1 anchor)
+The dedicated baseline-vs-optimized tool described under
+[Baseline definition](#baseline-definition-sow-111). Reports the paired,
+counterbalanced GET/SET speedup at large object sizes and a `PASS/FAIL` on ≥2×.
+
+### `valkey_microbench.py` (throughput)
 Drives the connector's internal thread-pool I/O engine directly and reports a
 three-config matrix — **baseline (1 worker, copy)**, **+parallel (N workers,
 copy)**, **+zero-copy (N workers, buffer GET)** — so each optimization's
-contribution is attributable. Supports payload and worker-count sweeps.
+contribution is attributable. Supports payload and worker-count sweeps. This is
+the tool for the parallelism-vs-zero-copy **ablation** that `bench_baseline.py`
+deliberately leaves combined.
 
 ### `connector_compare.py`
 Runs the GLIDE connector and the RESP connector against the **same** server with
@@ -67,10 +93,23 @@ the **same** keys/payloads, each through its native batch path, and reports a
 side-by-side table with an explicit "integrated path" caveat (the two batch the
 same way each is used in LMCache, not at the raw wire-protocol level).
 
-### `bench_exists_patch.py`
+### `bench_exists_patch.py` (throughput)
 Measures the consecutive-prefix `EXISTS` scan (used by `batched_contains`, the L2
 lookup that gates TTFT) before and after Patch 1, through the real thread pool,
 with a correctness check that both paths return identical results.
+
+### `bench_latency.py` (latency)
+Reports the per-operation latency distribution (p50/p90/p99/p99.9/mean/max) for
+SET, GET, and EXISTS, issued **one at a time** through a single worker so each
+sample is an isolated request latency (round-trip + server + client/FFI cost),
+not amortized batch throughput. GET uses the zero-copy buffer path. Percentiles
+use the nearest-rank method.
+
+### `bench_resource_efficiency.py` (resource efficiency)
+Measures the client-side cost of GET — **CPU-ms per GiB** (`process_time`, all
+threads) and process **RSS** — for the copy path vs the zero-copy buffer path.
+Each path runs in a **fresh subprocess** so allocator/connection warm-up from one
+path cannot bias the other's CPU/RSS.
 
 ## Document corpus (SOW 1.1.3)
 
@@ -83,7 +122,11 @@ KV-cache scenarios.
 ## Reproduction
 
 ```bash
-# 1.1.1 — ≥2x and the per-optimization breakdown
+# 1.1.1 — bulletproof ≥2x anchor (paired, counterbalanced, PASS/FAIL)
+python benchmarks/bench_baseline.py --host <host> --port 6379 \
+    --num-workers 8 --num-keys 64 --chunk-mb 4.0 --loops 10 --reps 10
+
+# 1.1.1 — ≥2x and the per-optimization breakdown (ablation)
 python benchmarks/valkey_microbench.py --host <host> --port 6379 \
     --num-workers 32 --num-keys 128 --chunk-mb 4.0 --loops 10 --compare
 
@@ -100,4 +143,12 @@ python benchmarks/connector_compare.py --host <host> --port 6379 \
 # Patch 1 before/after
 python benchmarks/bench_exists_patch.py --host <host> --port 6379 \
     --num-workers 8 --num-keys 512 --loops 20
+
+# Latency distribution (p50/p99) per op
+python benchmarks/bench_latency.py --host <host> --port 6379 \
+    --chunk-mb 1.0 --ops 2000
+
+# Resource efficiency (client CPU/GiB + RSS), copy vs zero-copy
+python benchmarks/bench_resource_efficiency.py --host <host> --port 6379 \
+    --num-workers 8 --num-keys 256 --chunk-mb 1.0 --loops 20
 ```

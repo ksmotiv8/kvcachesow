@@ -8,9 +8,12 @@ median or a single run.
 
 ## Executive summary
 
-- **≥2× large-object throughput (SOW 1.1.1): met and verified.** Parallel-fetch
-  (1 → N worker threads) gives **2.3–2.6× GET** at 4 MB across repeated runs.
-  The connector's default of 8 workers is near-optimal on a single node.
+- **≥2× large-object throughput (SOW 1.1.1): met and verified.** Against an
+  explicitly-defined pre-optimization baseline (1 worker, copy path), the
+  optimized connector (8 workers, zero-copy) delivers **GET ≥2× in every one of
+  20 counterbalanced reps** — median **~3.0–3.3×**, worst rep **2.1×** at 4 MiB
+  (`bench_baseline.py`). A wider parallel-fetch sweep gives **2.3–2.6× GET** at
+  4 MB; the connector's default of 8 workers is near-optimal on a single node.
 - **Two patches contributed back:**
   - **LMCache connector — pipelined EXISTS** (`Batch`+`exec` instead of per-key
     fan-out): **8.6–12.6×** faster metadata lookups (the prefix-scan that gates
@@ -42,14 +45,51 @@ Each connector is driven as LMCache drives it (no synthetic advantage):
 
 Timings are batch-level (submit all keys, await all) via `time.perf_counter`,
 with an **untimed warmup pass** before the measured loops so medians reflect
-steady state. Tools live alongside this file:
-`valkey_microbench.py`, `connector_compare.py`, `bench_exists_patch.py`. Each was
-self-reviewed and reviewed by OpenAI Codex.
+steady state. Tools live alongside this file: `valkey_microbench.py`,
+`connector_compare.py`, `bench_exists_patch.py`, `bench_baseline.py` (the
+paired baseline-vs-optimized tool), `bench_latency.py` (per-op p50/p99), and
+`bench_resource_efficiency.py` (client CPU/GiB + RSS). Each was self-reviewed and
+reviewed by OpenAI Codex.
 
-## 1.1.1 — ≥2× large-object throughput (verified, 3 reps @ 4 MB)
+The dedicated **baseline tool** (`bench_baseline.py`) adds two rigor measures
+the SOW claim leans on: it **counterbalances arm order (ABBA)** so monotonic
+drift or a server transient cannot systematically favor whichever arm runs
+second, and it computes each rep's speedup as a **paired ratio of two
+time-adjacent measurements**; it also checks every GET future for a hit and
+samples a buffer each rep so a silent miss cannot be counted as throughput.
 
-Baseline = the connector's retrieval optimizations **off** (1 worker, copy
-path); optimized = **on** (N workers, zero-copy buffer GET). 128 keys, 10 loops.
+## 1.1.1 — ≥2× large-object throughput (verified)
+
+### Baseline definition (the "existing connector")
+
+The SOW credits the gain to two retrieval optimizations: **parallel fetch** and
+the **zero-copy buffer path**. The baseline is the *same connector code path with
+both turned off* — **1 worker** (a single in-flight request at a time, matching
+the pre-#2790 connector's serial per-operation behavior) on the **copy path**
+(`_has_buffer_get = False`). Toggling on the same client library, server,
+payloads, and keyspace isolates exactly those two levers and avoids the confounds
+of a cross-implementation A/B (different client, different wire layout). The
+pre-#2790 connector issued single in-flight, copy-path operations, so this arm is
+a faithful stand-in for it. (The genuine legacy 2-key async connector was lost to
+a shallow clone; the toggled arm is the cleaner and more conservative baseline.)
+
+### Dedicated paired result (`bench_baseline.py`, 4 MiB, 8 workers)
+
+64 keys, 10 loops/measurement, **10 counterbalanced (ABBA) reps**, two
+independent runs:
+
+| Run | baseline GET | optimized GET | GET speedup (range, median) | worst rep | verdict |
+|---|---:|---:|---:|---:|:--:|
+| 1 | 0.81 GiB/s | 2.68 GiB/s | 2.35–3.58× (median **3.26×**) | 2.35× | PASS |
+| 2 | 0.89 GiB/s | 2.71 GiB/s | 2.09–3.16× (median **3.01×**) | 2.09× | PASS |
+
+**GET ≥2× held in every one of 20 reps** (worst rep 2.09×). SET speedup
+**3.0–3.6×** (median ~3.3×). This is the bulletproof anchor for the SOW 1.1.1
+claim under the "existing connector" wording.
+
+### Parallel-fetch sweep (`valkey_microbench.py --compare`, 4 MB)
+
+A wider sweep at the cluster-doc worker count (32). 128 keys, 10 loops.
 
 | Config | SET GiB/s | GET GiB/s | GET speedup |
 |---|---:|---:|---:|
@@ -58,8 +98,10 @@ path); optimized = **on** (N workers, zero-copy buffer GET). 128 keys, 10 loops.
 | +zero-copy (32 workers, buffer) | ~2.51 | ~2.4 | ~same as +parallel |
 
 GET speedup across 3 back-to-back reps: **2.46× / 2.31× / 2.36×** — robustly ≥2×.
-SET speedup ≈ **6.7×**. The ≥2× comes from **parallel fetch**; zero-copy is
-throughput-neutral at 4 MB (see [Zero-copy](#zero-copy-is-a-cpulatency-win-not-throughput)).
+(The sweep's 2.3–2.6× is lower than the paired tool's ~3× because 32 workers is
+past the single-node peak — see below; the paired tool uses the optimal 8.)
+The ≥2× comes from **parallel fetch**; zero-copy is throughput-neutral at 4 MB
+(see [Zero-copy](#zero-copy-a-modest-allocation-bound-effect-measured-honestly)).
 
 ### Optimal worker count (the "optimal i/o thread config" lever)
 
