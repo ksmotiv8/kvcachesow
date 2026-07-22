@@ -65,6 +65,11 @@ this repository:
   plain ENA). Evaluation of a Valkey DMA module is queued pending repository
   access.*
 - **1.2** — AI observability / Valkey Search demo, benchmarking harness, and report.
+  *Status (2026-07-22): 1.2.2 harness DELIVERED as `valkey-lab search`
+  ([cachecannon PR #116](https://github.com/cachecannon/cachecannon/pull/116), open, validated on
+  glove-25-angular at 1.18M vectors). 1.2.3 report DELIVERED and published:
+  [Valkey Search HNSW across bundle releases](https://github.com/ksmotiv8/valkey-kvcache-bench/blob/main/reports/valkey-search-hnsw-bundle-releases.md)
+  (three bundle releases measured; feeds a 1.3.1 blog). 1.2.1 demo not started.*
 - **1.3** — Content, conference, and community work (blogs, presentations,
   conference talks, podcasts).
 
