@@ -82,8 +82,9 @@ this repository:
   including upstream PR 1163, and Redis 8.8), single-client frontiers plus
   saturation throughput ladders, thread-equalization analysis, and comparison
   charts. This exceeds the "up to 3 versions" requirement and feeds a 1.3.1
-  blog. **1.2.1 demo NOT STARTED; at risk against the engagement term
-  (~2026-08-27).**
+  blog. **1.2.1 demo BUILT** and being productized into a blog; details with
+  publication. Remaining to close the item: release to an open source
+  repository under a BSD/MIT/Apache-2.0 license.
 - **1.3** — Content, conference, and community work (blogs, presentations,
   conference talks, podcasts).
 
