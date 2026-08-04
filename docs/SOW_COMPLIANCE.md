@@ -60,17 +60,31 @@ The broader engagement includes additional work items that are **not** part of
 this repository:
 
 - **1.1.4** — RDMA-with-Valkey investigation (a separate technical report).
-  *Status (2026-07-19): started — two Graviton4 c8gn.16xlarge hosts provisioned
-  for the investigation (EFA interfaces still to be attached; current NICs are
-  plain ENA). Evaluation of a Valkey DMA module is queued pending repository
-  access.*
+  *Status (2026-08-04): well advanced. The investigation's design is public:
+  [momentohq/vdma](https://github.com/momentohq/vdma) (one-sided RDMA over
+  libfabric/efa-direct, server-initiated, RESP control channel), backed by a
+  working multi-crate transfer substrate (libfabric data path, client, server,
+  bench). Two Graviton4 c8gn.16xlarge hosts provisioned. The written technical
+  report to Amazon remains OPEN and is due within the engagement term
+  (~2026-08-27); the vdma design document plus characterization data are its
+  planned inputs. A follow-on engineering engagement covering module
+  implementation is in discussion (tracked separately; not part of this SOW).*
 - **1.2** — AI observability / Valkey Search demo, benchmarking harness, and report.
-  *Status (2026-07-22): 1.2.2 harness DELIVERED as `valkey-lab search`
+  *Status (2026-08-04): 1.2.2 harness DELIVERED as `valkey-lab search`
   ([cachecannon PR #116](https://github.com/cachecannon/cachecannon/pull/116), open, validated on
-  glove-25-angular at 1.18M vectors). 1.2.3 report DELIVERED and published:
-  [Valkey Search HNSW across bundle releases](https://github.com/ksmotiv8/valkey-kvcache-bench/blob/main/reports/valkey-search-hnsw-bundle-releases.md)
-  (three bundle releases measured; feeds a 1.3.1 blog). 1.2.1 demo not started.*
+  glove-25-angular at 1.18M vectors), and since extended beyond the contracted
+  single-client scope with closed-loop concurrency (`--query-clients`,
+  `--query-loops`) and index-reuse modes. 1.2.3 report DELIVERED, published, and
+  substantially expanded on 2026-07-23:
+  [Valkey Search HNSW: releases, patches, and vs Redis](https://github.com/ksmotiv8/valkey-kvcache-bench/blob/main/reports/valkey-search-hnsw-bundle-releases.md)
+  now covers a unified cross-host campaign of seven engine configurations
+  (three released bundles, the current bundle, two module source builds
+  including upstream PR 1163, and Redis 8.8), single-client frontiers plus
+  saturation throughput ladders, thread-equalization analysis, and comparison
+  charts. This exceeds the "up to 3 versions" requirement and feeds a 1.3.1
+  blog. **1.2.1 demo NOT STARTED; at risk against the engagement term
+  (~2026-08-27).**
 - **1.3** — Content, conference, and community work (blogs, presentations,
   conference talks, podcasts).
 
-These are tracked elsewhere.
+These are tracked elsewhere. Last status refresh: 2026-08-04.
