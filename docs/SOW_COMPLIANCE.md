@@ -11,7 +11,7 @@ items link out to their external repositories and channels.
 The scope text these items trace to is in [SOW_SCOPE.md](SOW_SCOPE.md)
 (commercial figures omitted).
 
-Last status refresh: 2026-08-12.
+Last status refresh: 2026-08-12 (1.3.3 Unlocked sessions added).
 
 ## Status at a glance
 
@@ -26,7 +26,7 @@ Last status refresh: 2026-08-12.
 | 1.2.3 | Technical report, up to 3 versions, to the community | Done | [published report](https://github.com/ksmotiv8/valkey-kvcache-bench/blob/main/reports/valkey-search-hnsw-bundle-releases.md) (7 configurations) |
 | 1.3.1 | 6 blogs (at least one each in May, June, July) | In progress | 1 published, 1 in production, 4 open (tracker below) |
 | 1.3.2 | 2 conference presentations (L7+ review before use) | Open | tracker below |
-| 1.3.3 | QCon AI Boston talk + Unlocked AI block curation | Open | tracker below |
+| 1.3.3 | QCon AI Boston talk + Unlocked AI block curation | In progress | Unlocked block curated (4 sessions); QCon status TBD (tracker below) |
 | 1.3.4 | 4 podcasts with industry experts on Valkey YouTube | In progress | 3 published, 1 open (tracker below) |
 
 ## 1.1 KV Cache system and benchmarking
@@ -130,7 +130,16 @@ above.
 | Commitment | Status | Date | Notes |
 |---|---|---|---|
 | Present Valkey KV Cache and/or Vector Search at QCon AI Boston (June 2026) | TBD | TBD | deck exists (qcon-ai-kvcache) |
-| Curate AI presentation block for an upcoming Unlocked (3 to 5 AI sessions with Valkey components) | TBD | TBD | TBD |
+| Curate AI presentation block for an upcoming Unlocked (3 to 5 AI sessions with Valkey components) | Done | TBD | 4 sessions curated (below); not all presented by Momento, per the scope's intent of producing and curating content across the community |
+
+Unlocked AI block sessions (fill in dates and links):
+
+| # | Session | Speakers | Slides | YouTube |
+|---|---|---|---|---|
+| 1 | Valkey and Semantic Caching | Dmitry Polyakovsky | not shared by speaker | TBD |
+| 2 | Towards Faster Inference: With KV Cache and Beyond | Daniela Miao and Samuel Shen | TBD | TBD |
+| 3 | Efficiency at Scale: Our Journey from Redis to Valkey | Vu Pham and Xintian Li | TBD | TBD |
+| 4 | Scaling Search with Multithreading and Hybrid Queries | Allen Samuels and Yair Gottdenker | TBD | TBD |
 
 ### 1.3.4 Podcasts (4, with industry experts, on Valkey YouTube)
 
