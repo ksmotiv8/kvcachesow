@@ -8,6 +8,9 @@ where each deliverable lives.
 Artifacts for 1.1.1 through 1.1.3 are hosted in this repository. All other
 items link out to their external repositories and channels.
 
+The scope text these items trace to is in [SOW_SCOPE.md](SOW_SCOPE.md)
+(commercial figures omitted).
+
 Last status refresh: 2026-08-12.
 
 ## Status at a glance
