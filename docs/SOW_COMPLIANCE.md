@@ -11,7 +11,7 @@ items link out to their external repositories and channels.
 The scope text these items trace to is in [SOW_SCOPE.md](SOW_SCOPE.md)
 (commercial figures omitted).
 
-Last status refresh: 2026-08-13 (1.3.3 Unlocked session links filled).
+Last status refresh: 2026-08-13 (1.3.3 Unlocked evidence complete).
 
 ## Status at a glance
 
@@ -136,7 +136,7 @@ Unlocked AI block sessions (fill in dates and links):
 
 | # | Session | Speakers | Slides | YouTube |
 |---|---|---|---|---|
-| 1 | Valkey and Semantic Caching | Dmitry Polyakovsky | not shared by speaker | TBD (in the [Unlocked playlist](https://www.youtube.com/playlist?list=PLeRsXz8i6Cw-w4pJM5_7HRvjh17o7A9vD)) |
+| 1 | Valkey and Semantic Caching | Dmitry Polyakovsky | not shared by speaker | [youtube](https://www.youtube.com/watch?v=AO4lqNyXwMw&list=PLeRsXz8i6Cw-w4pJM5_7HRvjh17o7A9vD&index=8) |
 | 2 | Towards Faster Inference: With KV Cache and Beyond | Daniela Miao and Samuel Shen | [slides](https://docs.google.com/presentation/d/1XJR20MrtFw-MHwg6oslXxQjknM5j-3i1R53D_TNhuL4/edit?usp=drive_link) | [youtube](https://www.youtube.com/watch?v=4WP48Uadwj8&list=PLeRsXz8i6Cw-w4pJM5_7HRvjh17o7A9vD&index=16) |
 | 3 | Efficiency at Scale: Our Journey from Redis to Valkey | Vu Pham and Xintian Li | [slides](https://docs.google.com/presentation/d/1iLN62HwSNwXfDcJgCSmeMQKYfhQWlKht2jBc1wRLItI/edit?usp=drive_link) | [youtube](https://www.youtube.com/watch?v=WPxjsku7yUY&list=PLeRsXz8i6Cw-w4pJM5_7HRvjh17o7A9vD&index=2) |
 | 4 | Scaling Search with Multithreading and Hybrid Queries | Allen Samuels and Yair Gottdenker | [slides](https://docs.google.com/presentation/d/1nASJVKYnupCyVmuPSgApZIURfye636IB/edit?usp=drive_link&ouid=109806004079611392873&rtpof=true&sd=true) | [youtube](https://www.youtube.com/watch?v=_L0G6kuzX-E&list=PLeRsXz8i6Cw-w4pJM5_7HRvjh17o7A9vD&index=3) |
