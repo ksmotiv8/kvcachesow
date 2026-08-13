@@ -11,7 +11,7 @@ items link out to their external repositories and channels.
 The scope text these items trace to is in [SOW_SCOPE.md](SOW_SCOPE.md)
 (commercial figures omitted).
 
-Last status refresh: 2026-08-13 (1.3.3 Unlocked evidence complete).
+Last status refresh: 2026-08-13 (1.3.2 mapped to 1.3.3 delivery venues).
 
 ## Status at a glance
 
@@ -25,7 +25,7 @@ Last status refresh: 2026-08-13 (1.3.3 Unlocked evidence complete).
 | 1.2.2 | Valkey Search benchmarking harness | Done | `valkey-lab search` ([cachecannon PR #116](https://github.com/cachecannon/cachecannon/pull/116)) |
 | 1.2.3 | Technical report, up to 3 versions, to the community | Done | [published report](https://github.com/ksmotiv8/valkey-kvcache-bench/blob/main/reports/valkey-search-hnsw-bundle-releases.md) (7 configurations) |
 | 1.3.1 | 6 blogs (at least one each in May, June, July) | In progress | 1 published, 1 in production, 4 open (tracker below) |
-| 1.3.2 | 2 conference presentations (L7+ review before use) | Open | tracker below |
+| 1.3.2 | 2 conference presentations (L7+ review before use) | In progress | both decks identified and delivered at 1.3.3 venues; L7 review to document (tracker below) |
 | 1.3.3 | QCon AI Boston talk + Unlocked AI block curation | In progress | Unlocked block curated (4 sessions); QCon status TBD (tracker below) |
 | 1.3.4 | 4 podcasts with industry experts on Valkey YouTube | In progress | 3 published, 1 open (tracker below) |
 
@@ -120,10 +120,21 @@ above.
 
 ### 1.3.2 Conference presentations (2, on KV Cache and Search performance in Valkey; L7+ review before use)
 
+The 1.3.2 decks map to the 1.3.3 delivery venues per the scope's own
+cross-reference ("these are the presentations Momento is expected to deliver
+at the conferences and events described in 1.3.3"). Unlocked session 2 is
+Momento-presented (Daniela Miao) and therefore serves as both one of the four
+curated 1.3.3 sessions and 1.3.2 deck #2.
+
 | # | Title | Venue / event | Date | URL / deck | Review status |
 |---|---|---|---|---|---|
-| 1 | TBD | TBD | TBD | TBD | TBD |
-| 2 | TBD | TBD | TBD | TBD | TBD |
+| 1 | Valkey KV Cache (qcon-ai-kvcache deck) | QCon AI Boston | June 2026 (confirm) | deck in kvcache-slides | L7+ review to document |
+| 2 | Towards Faster Inference: With KV Cache and Beyond | Valkey Unlocked AI block | TBD | [slides](https://docs.google.com/presentation/d/1XJR20MrtFw-MHwg6oslXxQjknM5j-3i1R53D_TNhuL4/edit?usp=drive_link), [youtube](https://www.youtube.com/watch?v=4WP48Uadwj8&list=PLeRsXz8i6Cw-w4pJM5_7HRvjh17o7A9vD&index=16) | L7+ review to document |
+
+Open follow-ups: (a) document L7+ review or retroactive written approval for
+both decks; (b) the pair is KV-cache weighted; a search-performance deck built
+from the 1.2.3 report would strengthen the "KV Cache and Search" coverage and
+is reusable for future events.
 
 ### 1.3.3 Conference appearances
 
