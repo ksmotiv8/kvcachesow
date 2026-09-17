@@ -47,7 +47,7 @@ storage backends.
 
 In addition to the connector-side optimizations, this work contributes a new
 upstream capability to valkey-glide: `mget(keys, buffers=[...])`, batched
-zero-copy multi-key GET, proposed upstream as
+zero-copy multi-key GET, merged upstream as
 [valkey-glide #6367](https://github.com/valkey-io/valkey-glide/pull/6367)
 (snapshot in `patches/valkey_glide_mget_buffers.patch`; see `docs/PATCHES.md`).
 This closes the small-object/metadata gap where the GLIDE connector previously
@@ -61,12 +61,13 @@ trailed a hand-rolled C++ connector.
   and verified (52/52 locally); DCO and k3-unit-tests green. Awaiting review;
   the second CI job has been stuck in the project's buildkite queue.
 - [valkey-glide #6367](https://github.com/valkey-io/valkey-glide/pull/6367):
-  zero-copy `buffers` for the sync client's `mget`. Three review rounds fully
-  addressed: zero-allocation single-buffer path restored (enum), FFI dedup,
+  zero-copy `buffers` for the sync client's `mget`. **Merged 2026-07-08** with
+  two approvals (xShinnRyuu, Aryex). Three review rounds were addressed before
+  merge: zero-allocation single-buffer path restored (enum), FFI dedup,
   return-value docs, CHANGELOG, and eight tests (including `itemsize > 1` and a
-  cross-slot cluster case verified on a live 3-node cluster). One approval
-  (Aryex); commit is signed/Verified per repo policy; awaiting final approval
-  from the second reviewer.
+  cross-slot cluster case verified on a live 3-node cluster). Batched zero-copy
+  multi-key GET is now available to every valkey-glide sync client, not only to
+  this connector.
 
 ### 1.1.4 RDMA-with-Valkey investigation
 
