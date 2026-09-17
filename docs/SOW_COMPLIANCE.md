@@ -11,7 +11,7 @@ items link out to their external repositories and channels.
 The scope text these items trace to is in [SOW_SCOPE.md](SOW_SCOPE.md)
 (commercial figures omitted).
 
-Last status refresh: 2026-08-13 (1.3.2 mapped to 1.3.3 delivery venues).
+Last status refresh: 2026-09-17 (1.3.1 blog 5 published).
 
 ## Status at a glance
 
@@ -21,10 +21,10 @@ Last status refresh: 2026-08-13 (1.3.2 mapped to 1.3.3 delivery venues).
 | 1.1.2 | Publish connector, configs, results under a permissive license | Done | [valkey-kvcache-bench](https://github.com/ksmotiv8/valkey-kvcache-bench) (MIT); upstream PRs below |
 | 1.1.3 | Reproducible benchmarks + 30-doc corpus | Done | `benchmarks/` + `corpus/` (detail below) |
 | 1.1.4 | RDMA-with-Valkey investigation, technical report | In progress | design public ([momentohq/vdma](https://github.com/momentohq/vdma)); written report open |
-| 1.2.1 | Demo: Valkey Search in an inference workflow, contributed OSS | In progress | demo built; blog in production; OSS release open |
+| 1.2.1 | Demo: Valkey Search in an inference workflow, contributed OSS | Done | [valkey-agent-memory-demo](https://github.com/momentohq/valkey-agent-memory-demo) (MIT); blog published (detail below) |
 | 1.2.2 | Valkey Search benchmarking harness | Done | `valkey-lab search` ([cachecannon PR #116](https://github.com/cachecannon/cachecannon/pull/116)) |
 | 1.2.3 | Technical report, up to 3 versions, to the community | Done | [published report](https://github.com/ksmotiv8/valkey-kvcache-bench/blob/main/reports/valkey-search-hnsw-bundle-releases.md) (7 configurations) |
-| 1.3.1 | 6 blogs (at least one each in May, June, July) | In progress | 1 published, 1 in production, 4 open (tracker below) |
+| 1.3.1 | 6 blogs (at least one each in May, June, July) | In progress | 4 published, 1 in production, 1 open (tracker below) |
 | 1.3.2 | 2 conference presentations (L7+ review before use) | In progress | both decks identified and delivered at 1.3.3 venues; L7 review to document (tracker below) |
 | 1.3.3 | QCon AI Boston talk + Unlocked AI block curation | In progress | Unlocked block curated (4 sessions); QCon status TBD (tracker below) |
 | 1.3.4 | 4 podcasts with industry experts on Valkey YouTube | In progress | 3 published, 1 open (tracker below) |
@@ -47,7 +47,7 @@ storage backends.
 
 In addition to the connector-side optimizations, this work contributes a new
 upstream capability to valkey-glide: `mget(keys, buffers=[...])`, batched
-zero-copy multi-key GET, proposed upstream as
+zero-copy multi-key GET, merged upstream as
 [valkey-glide #6367](https://github.com/valkey-io/valkey-glide/pull/6367)
 (snapshot in `patches/valkey_glide_mget_buffers.patch`; see `docs/PATCHES.md`).
 This closes the small-object/metadata gap where the GLIDE connector previously
@@ -61,12 +61,13 @@ trailed a hand-rolled C++ connector.
   and verified (52/52 locally); DCO and k3-unit-tests green. Awaiting review;
   the second CI job has been stuck in the project's buildkite queue.
 - [valkey-glide #6367](https://github.com/valkey-io/valkey-glide/pull/6367):
-  zero-copy `buffers` for the sync client's `mget`. Three review rounds fully
-  addressed: zero-allocation single-buffer path restored (enum), FFI dedup,
+  zero-copy `buffers` for the sync client's `mget`. **Merged 2026-07-08** with
+  two approvals (xShinnRyuu, Aryex). Three review rounds were addressed before
+  merge: zero-allocation single-buffer path restored (enum), FFI dedup,
   return-value docs, CHANGELOG, and eight tests (including `itemsize > 1` and a
-  cross-slot cluster case verified on a live 3-node cluster). One approval
-  (Aryex); commit is signed/Verified per repo policy; awaiting final approval
-  from the second reviewer.
+  cross-slot cluster case verified on a live 3-node cluster). Batched zero-copy
+  multi-key GET is now available to every valkey-glide sync client, not only to
+  this connector.
 
 ### 1.1.4 RDMA-with-Valkey investigation
 
@@ -82,9 +83,14 @@ implementation is in discussion (tracked separately; not part of this SOW).
 
 ## 1.2 AI observability, search, and benchmarking
 
-- **1.2.1 demo** (2026-08-12): built and being productized into a blog;
-  details with publication. Remaining to close the item: release to an open
-  source repository under a BSD/MIT/Apache-2.0 license.
+- **1.2.1 demo**: Done. Published as [valkey-agent-memory-demo](https://github.com/momentohq/valkey-agent-memory-demo)
+  (MIT, Momento, Inc.): an agent that stores successful task approaches and
+  recalls them on similar tasks, closing a single `FT.SEARCH` hybrid query
+  (vector similarity + tag filter on successful outcomes + numeric recency
+  range) into an Ollama inference loop (qwen2.5:3b for reasoning,
+  mxbai-embed-large for embeddings), runnable end to end via Docker Compose.
+  Written up in [Agent memory on Valkey](https://www.gomomento.com/blog/agent-memory-on-valkey/)
+  (2026-08-19), which also counts toward 1.3.1.
 - **1.2.2 harness**: delivered as `valkey-lab search`
   ([cachecannon PR #116](https://github.com/cachecannon/cachecannon/pull/116),
   open, validated on glove-25-angular at 1.18M vectors), and since extended
@@ -108,15 +114,15 @@ Fill in Date / URL / Description as items land.
 | # | Title | Type | Date | URL | Description |
 |---|---|---|---|---|---|
 | 1 | Your KV cache benchmark is "hi hi hi" | Blog | Jun 24, 2026 | https://www.gomomento.com/blog/your-kv-cache-benchmark-is-hi/ | Khawaja Shams explains how building a Valkey-backed KV cache connector revealed that repetitive synthetic benchmarks overstate compression and transfer performance compared with realistic production workloads. |
-| 2 | Face Recognition with Valkey | Blog | TBD | TBD | In production. |
-| 3 | TBD | Blog | TBD | TBD | TBD |
-| 4 | TBD | Blog | TBD | TBD | TBD |
-| 5 | TBD | Blog | TBD | TBD | TBD |
+| 2 | Agent memory on Valkey | Blog | Aug 19, 2026 | https://www.gomomento.com/blog/agent-memory-on-valkey/ | Allen Helton builds agent memory on Valkey Search and shows how the query planner's 0.001 selectivity threshold picks between brute-force and inline filtering, plus what deletes cost in an HNSW index. Links a working demo repo. |
+| 3 | Stop counting indexes | Blog | Aug 27, 2026 | https://www.gomomento.com/blog/stop-counting-indexes/ | Allen Helton measures index cost on write throughput (Valkey 9.1.1, valkey-search 1.2.1, r7i.4xlarge) through benchmarking. |
+| 4 | Face Recognition with Valkey | Blog | TBD | TBD | In production. |
+| 5 | Your KV cache belongs on the network | Blog | Sep 14, 2026 | https://www.gomomento.com/blog/your-kv-cache-belongs-on-the-network/ | Allen Helton benchmarks three KV cache placements on identical hardware (host DRAM, local NVMe, remote Valkey) and finds the remote tier both the fastest on a single node (557 ms cached TTFT vs 1521 ms for local NVMe) and the only one that serves a second inference node at all. Reproduced across two campaigns within 2%. |
 | 6 | TBD | Blog | TBD | TBD | TBD |
 
 Note: the cadence calls for at least one blog in each of May, June, and July.
-Listed entries currently cover June only; if May or July posts exist, add them
-above.
+Listed entries currently cover June, August, and September; if May or July posts
+exist, add them above.
 
 ### 1.3.2 Conference presentations (2, on KV Cache and Search performance in Valkey; L7+ review before use)
 
